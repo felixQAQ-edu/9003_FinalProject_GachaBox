@@ -67,13 +67,11 @@ To ensure equal contribution and efficient development, our group of 3 is divide
     * Bug fixing and AVD stability testing.
     * Prepare Padlet showcase and Final Reflection Document.
 
----Team Sync Rules:
+---
 
-Always PULL before you start coding to get the latest updates.
+## 🚀 Team Sync Rules
 
-COMMIT & PUSH at least once a day or whenever you finish a small task.
-
-DO NOT send code via WeChat/ZIP files. Only use GitHub.
-
-Write clear commit messages (e.g., "Updated UI for gallery" instead of "1111").
-
+* **Always PULL** before you start coding to get the latest updates.
+* **COMMIT & PUSH** at least once a day or whenever you finish a small task.
+* **DO NOT** send code via WeChat/ZIP files. Only use GitHub.
+* **Write clear commit messages** (e.g., "Updated UI for gallery" instead of "1111").
