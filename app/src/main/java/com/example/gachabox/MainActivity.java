@@ -1,24 +1,36 @@
 package com.example.gachabox;
 
-import android.os.Bundle;
-
-import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
+import android.os.Bundle;
+import android.util.Log;
+
+import com.example.gachabox.database.DatabaseHelper;
+import com.example.gachabox.logic.GachaEngine;
+import com.example.gachabox.model.GachaItem;
 
 public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
-            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
-            return insets;
-        });
+
+
+        GachaEngine engine = new GachaEngine();
+        DatabaseHelper dbHelper = new DatabaseHelper(MainActivity.this);
+
+        Log.d("GachaTest", "start test...");
+
+        for (int i = 1; i <= 35; i++) {
+            GachaItem result = engine.pull();
+
+            boolean success = dbHelper.addGachaItem(result.getName(), result.getRarity());
+
+            if (success) {
+                Log.d("GachaTest", "第 " + i + " 抽: " + result.toString() + " | 存入成功!");
+            } else {
+                Log.e("GachaTest", "第 " + i + " 抽存入失败!");
+            }
+        }
     }
 }
