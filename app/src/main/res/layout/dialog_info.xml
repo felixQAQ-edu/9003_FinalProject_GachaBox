@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp"
+    android:background="@drawable/info_dialog_bg">
+
+    <LinearLayout
+        android:id="@+id/dialogTabRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/tabInfo"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Info"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="#4F4A57"
+            android:gravity="center" />
+
+        <TextView
+            android:id="@+id/tabHistory"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Pull History"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="#8A7BA3"
+            android:gravity="center" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="16dp"
+        android:background="#D9C8EA" />
+
+    <LinearLayout
+        android:id="@+id/dialogContentContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/dialogInfoContent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Rules &amp; Drop Rates\n\nCommon: 40%\nUncommon: 30%\nRare: 20%\nSecret: 10%"
+            android:textSize="16sp"
+            android:textColor="#4F4A57"
+            android:lineSpacingExtra="4dp" />
+
+        <LinearLayout
+            android:id="@+id/historyHeaderRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:visibility="gone"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="8dp">
+
+            <TextView
+                android:id="@+id/historyHeaderPull"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Pull"
+                android:textStyle="bold"
+                android:textColor="#6B5BBE"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/historyHeaderTime"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="2"
+                android:text="Time"
+                android:textStyle="bold"
+                android:textColor="#6B5BBE"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/historyHeaderItem"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Item"
+                android:textStyle="bold"
+                android:textColor="#6B5BBE"
+                android:textSize="15sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/historyEmptyText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="No pull history yet."
+            android:textSize="16sp"
+            android:textColor="#4F4A57"
+            android:visibility="gone" />
+
+    </LinearLayout>
+
+</LinearLayout>
