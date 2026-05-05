@@ -65,7 +65,7 @@ import com.example.gachabox.data.entity.InventoryEntity;
 import java.util.ArrayList;
 import java.util.List;
 
-public class MainActivity extends AppCompatActivity {
+public class  MainActivity extends AppCompatActivity {
 
     private boolean isAnimating = false;
     private boolean isCardFrontShowing = false;
