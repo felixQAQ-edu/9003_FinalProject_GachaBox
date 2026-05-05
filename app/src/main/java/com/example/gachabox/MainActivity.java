@@ -24,7 +24,7 @@ package com.example.gachabox;
 //        for (int i = 1; i <= 35; i++) {
 //            GachaItem result = engine.pull();
 //
-//            boolean success = dbHelper.addGachaItem(result.getName(), result.getRarity());
+//            boolean success = dbHelper.addGachaIte·m(result.getName(), result.getRarity());
 //
 //            if (success) {
 //                Log.d("GachaTest", "第 " + i + " 抽: " + result.toString() + " | 存入成功!");
@@ -34,7 +34,6 @@ package com.example.gachabox;
 //        }
 //    }
 //}
-package com.example.gachabox;
 
 import android.os.Bundle;
 import android.util.Log;
@@ -44,6 +43,7 @@ import android.view.animation.DecelerateInterpolator;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AlertDialog;
@@ -54,12 +54,13 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.example.gachabox.database.DatabaseHelper;
+import com.example.gachabox.model.GachaItem;
+import com.example.gachabox.data.GachaRepository;
 import com.example.gachabox.gallery.GalleryAdapter;
 import com.example.gachabox.gallery.GalleryItem;
 import com.example.gachabox.logic.GachaEngine;
-import com.example.gachabox.model.GachaItem;
 import com.google.android.material.card.MaterialCardView;
+import com.example.gachabox.data.entity.InventoryEntity;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -69,6 +70,8 @@ public class MainActivity extends AppCompatActivity {
     private boolean isAnimating = false;
     private boolean isCardFrontShowing = false;
     private boolean isCardShowing = false;
+    private GachaRepository repository;
+    private TextView chanceCountText;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -76,73 +79,83 @@ public class MainActivity extends AppCompatActivity {
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
 
+        repository = GachaRepository.getInstance(this);
+        repository.initializeData();
+
         GachaEngine engine = new GachaEngine();
-        DatabaseHelper dbHelper = new DatabaseHelper(MainActivity.this);
 
         ImageView starButton = findViewById(R.id.starButton);
         View cardSpawnAnchor = findViewById(R.id.cardSpawnAnchor);
         MaterialCardView resultCard = findViewById(R.id.resultCard);
         ImageView cardBack = findViewById(R.id.cardBack);
         ImageView cardFront = findViewById(R.id.cardFront);
-        TextView chanceCountText = findViewById(R.id.chanceCountText);
+        chanceCountText = findViewById(R.id.chanceCountText);
+        refreshTokenDisplay();
 
         starButton.setOnClickListener(v -> {
             if (isAnimating || isCardShowing) return;
 
-            // TODO Interface 1:
-            // Check whether the user still has available draw chances.
-            // This is currently not connected to the real token/chance system.
-
+            // Lock immediately to absorb rapid double-taps. Both flags are
+            // reset on the failure path here, or by the card animation /
+            // dismiss flow on the success path.
             isAnimating = true;
             isCardShowing = true;
 
-            GachaItem pulledItem = engine.pull();
-            boolean success = dbHelper.addGachaItem(pulledItem.getName(), pulledItem.getRarity());
+            repository.spendOneToken((success, message) -> {
+                if (!success) {
+                    // Out of tokens — release locks and tell the user.
+                    isAnimating = false;
+                    isCardShowing = false;
+                    Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show();
+                    return;
+                }
 
-            if (success) {
-                Log.d("GachaTest", "Pull success: " + pulledItem.toString());
-            } else {
-                Log.e("GachaTest", "Failed to save pull result");
-            }
+                // Token spent. Update the displayed balance.
+                refreshTokenDisplay();
 
-            String rarity = pulledItem.getRarity();
-            String cardName = pulledItem.getName();
-            int cardImageResId = mapCardNameToImage(cardName, rarity);
+                // Run the gacha pull.
+                GachaItem pulledItem = engine.pull();
+                String rarity = pulledItem.getRarity();
+                int cardImageResId = getResources().getIdentifier(
+                        pulledItem.getImageResName(),
+                        "drawable",
+                        getPackageName()
+                );
 
-            v.animate()
-                    .scaleX(0.88f)
-                    .scaleY(0.88f)
-                    .alpha(0.85f)
-                    .setDuration(100)
-                    .withEndAction(() -> v.animate()
-                            .scaleX(1f)
-                            .scaleY(1f)
-                            .alpha(1f)
-                            .setDuration(120)
-                            .start())
-                    .start();
+                // Persist the unlock to the inventory table. The gallery will
+                // pick it up the next time it queries the repository.
+                repository.unlockItem(pulledItem.getId(), (ok, msg) -> {
+                    Log.d("GachaPull", msg);
+                });
 
-            showDrawCard(
-                    resultCard,
-                    cardBack,
-                    cardFront,
-                    cardSpawnAnchor,
-                    rarity,
-                    cardImageResId
-            );
+                // Button press animation
+                v.animate()
+                        .scaleX(0.88f)
+                        .scaleY(0.88f)
+                        .alpha(0.85f)
+                        .setDuration(100)
+                        .withEndAction(() -> v.animate()
+                                .scaleX(1f)
+                                .scaleY(1f)
+                                .alpha(1f)
+                                .setDuration(120)
+                                .start())
+                        .start();
 
-            // TODO Interface 4:
-            // Replace this with the real remaining chances / token count.
-            // For now, the existing UI text is left unchanged.
-            chanceCountText.setText(chanceCountText.getText());
+                // Card spawn + flip animation (unchanged)
+                showDrawCard(
+                        resultCard,
+                        cardBack,
+                        cardFront,
+                        cardSpawnAnchor,
+                        rarity,
+                        cardImageResId
+                );
 
-            // TODO Interface 5:
-            // Save draw history using the real persistence layer.
-            saveDrawHistory(pulledItem);
-
-            // TODO Interface 6:
-            // Update collection / gallery unlock state using real data.
-            updateCollection(pulledItem);
+                // History stub still empty — closed in a later iteration.
+                saveDrawHistory(pulledItem);
+                updateCollection(pulledItem);
+            });
         });
 
         LinearLayout infoBadge = findViewById(R.id.infoBadge);
@@ -197,41 +210,55 @@ public class MainActivity extends AppCompatActivity {
         });
 
         TextView galleryButton = findViewById(R.id.galleryButton);
+//        TextView galleryButton = findViewById(R.id.galleryButton);
         galleryButton.setOnClickListener(v -> {
-            LayoutInflater inflater = LayoutInflater.from(MainActivity.this);
-            View dialogView = inflater.inflate(R.layout.dialog_gallery, null);
+            // Pull the real inventory snapshot before showing the dialog.
+            // Callback fires on the main thread (Repository guarantees this),
+            // so all UI work below is safe.
+            repository.getAllInventory(inventory -> {
 
-            RecyclerView dialogGalleryRecyclerView = dialogView.findViewById(R.id.dialogGalleryRecyclerView);
-            dialogGalleryRecyclerView.setLayoutManager(new GridLayoutManager(MainActivity.this, 3));
+                // Convert Room entities to the GalleryAdapter's view model.
+                // imageResName is a string like "common_1"; resolve it to a
+                // drawable resource id at runtime.
+                List<GalleryItem> itemList = new ArrayList<>();
+                if (inventory != null) {
+                    for (InventoryEntity entity : inventory) {
+                        int imageResId = getResources().getIdentifier(
+                                entity.imageResName,
+                                "drawable",
+                                getPackageName()
+                        );
+                        itemList.add(new GalleryItem(
+                                imageResId,
+                                entity.itemName,
+                                entity.rarity,
+                                entity.unlocked
+                        ));
+                    }
+                }
 
-            // TODO Interface 8:
-            // Replace this mock data with the real collection / inventory data source.
-            List<GalleryItem> itemList = new ArrayList<>();
-            itemList.add(new GalleryItem(R.drawable.common_1, "Common 1", "Common", true));
-            itemList.add(new GalleryItem(R.drawable.common_2, "Common 2", "Common", true));
-            itemList.add(new GalleryItem(R.drawable.common_3, "Common 3", "Common", true));
-            itemList.add(new GalleryItem(R.drawable.common_4, "Common 4", "Common", true));
-            itemList.add(new GalleryItem(R.drawable.uncommon_1, "Uncommon 1", "Uncommon", false));
-            itemList.add(new GalleryItem(R.drawable.uncommon_2, "Uncommon 2", "Uncommon", false));
-            itemList.add(new GalleryItem(R.drawable.uncommon_3, "Uncommon 3", "Uncommon", false));
-            itemList.add(new GalleryItem(R.drawable.rare_1, "Rare 1", "Rare", false));
-            itemList.add(new GalleryItem(R.drawable.rare_2, "Rare 2", "Rare", false));
-            itemList.add(new GalleryItem(R.drawable.secret_1, "Secret 1", "Secret", false));
+                // Build and display the dialog.
+                LayoutInflater inflater = LayoutInflater.from(MainActivity.this);
+                View dialogView = inflater.inflate(R.layout.dialog_gallery, null);
 
-            GalleryAdapter adapter = new GalleryAdapter(itemList);
-            dialogGalleryRecyclerView.setAdapter(adapter);
+                RecyclerView dialogGalleryRecyclerView = dialogView.findViewById(R.id.dialogGalleryRecyclerView);
+                dialogGalleryRecyclerView.setLayoutManager(new GridLayoutManager(MainActivity.this, 3));
 
-            AlertDialog dialog = new AlertDialog.Builder(MainActivity.this)
-                    .setView(dialogView)
-                    .create();
+                GalleryAdapter adapter = new GalleryAdapter(itemList);
+                dialogGalleryRecyclerView.setAdapter(adapter);
 
-            dialog.show();
+                AlertDialog dialog = new AlertDialog.Builder(MainActivity.this)
+                        .setView(dialogView)
+                        .create();
 
-            if (dialog.getWindow() != null) {
-                dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
-                int width = (int) (getResources().getDisplayMetrics().widthPixels * 0.9);
-                dialog.getWindow().setLayout(width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
-            }
+                dialog.show();
+
+                if (dialog.getWindow() != null) {
+                    dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+                    int width = (int) (getResources().getDisplayMetrics().widthPixels * 0.9);
+                    dialog.getWindow().setLayout(width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+                }
+            });
         });
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
@@ -369,29 +396,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private int mapCardNameToImage(String cardName, String rarity) {
-        switch (cardName) {
-            case "Golden Retriever":
-                return R.drawable.common_1;
-            case "Husky":
-                return R.drawable.rare_1;
-            case "Godzilla":
-                return R.drawable.secret_1;
-            default:
-                switch (rarity) {
-                    case "Common":
-                        return R.drawable.common_1;
-                    case "Uncommon":
-                        return R.drawable.uncommon_1;
-                    case "Rare":
-                        return R.drawable.rare_1;
-                    case "Secret":
-                        return R.drawable.secret_1;
-                    default:
-                        return R.drawable.common_1;
-                }
-        }
-    }
+
 
     private void saveDrawHistory(GachaItem pulledItem) {
         // TODO Interface 5:
@@ -406,5 +411,12 @@ public class MainActivity extends AppCompatActivity {
     private void loadDrawHistory() {
         // TODO Interface 7:
         // Load real draw history here.
+    }
+    private void refreshTokenDisplay() {
+        repository.getUser(user -> {
+            if (user != null) {
+                chanceCountText.setText(String.valueOf(user.tokenBalance));
+            }
+        });
     }
 }
