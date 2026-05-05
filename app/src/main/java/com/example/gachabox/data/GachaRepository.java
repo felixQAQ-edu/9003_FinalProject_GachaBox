@@ -1,7 +1,8 @@
-//Repository with CRUD
 package com.example.gachabox.data;
 
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 
 import com.example.gachabox.data.dao.InventoryDao;
 import com.example.gachabox.data.dao.UserDao;
@@ -12,19 +13,63 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+/**
+ * Single source of truth for User + Inventory data.
+ *
+ * <h3>Lifecycle</h3>
+ * Singleton — never instantiate with {@code new}. Always obtain via
+ * {@link #getInstance(Context)}. The instance is held for the lifetime
+ * of the process and shares one background executor across all callers.
+ *
+ * <h3>Threading contract</h3>
+ * <ul>
+ *   <li>All DAO operations run on a private single-thread executor.
+ *       Single-thread is intentional: it serializes writes, so we
+ *       don't need extra locking, and Room is happy.</li>
+ *   <li>All callback methods fire on the Android <b>main thread</b>.
+ *       Callers can update the UI directly inside callbacks without
+ *       wrapping in {@code runOnUiThread}.</li>
+ * </ul>
+ */
 public class GachaRepository {
+
+    // ---------- Singleton ----------
+
+    private static volatile GachaRepository INSTANCE;
+
+    public static GachaRepository getInstance(Context context) {
+        if (INSTANCE == null) {
+            synchronized (GachaRepository.class) {
+                if (INSTANCE == null) {
+                    INSTANCE = new GachaRepository(context.getApplicationContext());
+                }
+            }
+        }
+        return INSTANCE;
+    }
+
+    // ---------- Instance state ----------
 
     private final UserDao userDao;
     private final InventoryDao inventoryDao;
     private final ExecutorService executorService;
+    private final Handler mainHandler;
 
-    public GachaRepository(Context context) {
-        AppDatabase database = AppDatabase.getInstance(context);
+    private GachaRepository(Context appContext) {
+        AppDatabase database = AppDatabase.getInstance(appContext);
         userDao = database.userDao();
         inventoryDao = database.inventoryDao();
         executorService = Executors.newSingleThreadExecutor();
+        mainHandler = new Handler(Looper.getMainLooper());
     }
 
+    // ---------- Public API ----------
+
+    /**
+     * Seed the database on first launch. Idempotent: if a user row or
+     * inventory rows already exist, nothing is overwritten.
+     * Fire-and-forget — no callback because the UI doesn't wait on it.
+     */
     public void initializeData() {
         executorService.execute(() -> {
             UserEntity user = userDao.getUser();
@@ -42,14 +87,14 @@ public class GachaRepository {
     public void getUser(RepositoryUserCallback callback) {
         executorService.execute(() -> {
             UserEntity user = userDao.getUser();
-            callback.onResult(user);
+            mainHandler.post(() -> callback.onResult(user));
         });
     }
 
     public void getAllInventory(RepositoryInventoryCallback callback) {
         executorService.execute(() -> {
             List<InventoryEntity> items = inventoryDao.getAllItems();
-            callback.onResult(items);
+            mainHandler.post(() -> callback.onResult(items));
         });
     }
 
@@ -59,9 +104,9 @@ public class GachaRepository {
             if (user != null) {
                 user.tokenBalance += amount;
                 userDao.updateUser(user);
-                callback.onComplete(true, "Tokens added.");
+                mainHandler.post(() -> callback.onComplete(true, "Tokens added."));
             } else {
-                callback.onComplete(false, "User not found.");
+                mainHandler.post(() -> callback.onComplete(false, "User not found."));
             }
         });
     }
@@ -72,9 +117,9 @@ public class GachaRepository {
             if (user != null && user.tokenBalance > 0) {
                 user.tokenBalance -= 1;
                 userDao.updateUser(user);
-                callback.onComplete(true, "Token spent.");
+                mainHandler.post(() -> callback.onComplete(true, "Token spent."));
             } else {
-                callback.onComplete(false, "Not enough tokens.");
+                mainHandler.post(() -> callback.onComplete(false, "Not enough tokens."));
             }
         });
     }
@@ -84,7 +129,7 @@ public class GachaRepository {
             InventoryEntity item = inventoryDao.getItemById(itemId);
 
             if (item == null) {
-                callback.onComplete(false, "Item not found.");
+                mainHandler.post(() -> callback.onComplete(false, "Item not found."));
                 return;
             }
 
@@ -96,7 +141,10 @@ public class GachaRepository {
             }
 
             inventoryDao.updateItem(item);
-            callback.onComplete(true, item.itemName + " added to inventory.");
+            // Capture the name now so the lambda doesn't depend on the
+            // mutable entity field at dispatch time.
+            String name = item.itemName;
+            mainHandler.post(() -> callback.onComplete(true, name + " added to inventory."));
         });
     }
 
@@ -108,9 +156,11 @@ public class GachaRepository {
             userDao.insertUser(new UserEntity(1, 10));
             inventoryDao.insertAll(SeedData.defaultInventory());
 
-            callback.onComplete(true, "Data reset complete.");
+            mainHandler.post(() -> callback.onComplete(true, "Data reset complete."));
         });
     }
+
+    // ---------- Callback interfaces ----------
 
     public interface RepositoryUserCallback {
         void onResult(UserEntity user);
