@@ -24,7 +24,7 @@ package com.example.gachabox;
 //        for (int i = 1; i <= 35; i++) {
 //            GachaItem result = engine.pull();
 //
-//            boolean success = dbHelper.addGachaIte·m(result.getName(), result.getRarity());
+//            boolean success = dbHelper.addGachaItem(result.getName(), result.getRarity());
 //
 //            if (success) {
 //                Log.d("GachaTest", "第 " + i + " 抽: " + result.toString() + " | 存入成功!");
@@ -44,6 +44,8 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.graphics.ColorMatrix;
+import android.graphics.ColorMatrixColorFilter;
 
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AlertDialog;
@@ -72,6 +74,7 @@ public class  MainActivity extends AppCompatActivity {
     private boolean isCardShowing = false;
     private GachaRepository repository;
     private TextView chanceCountText;
+    private ImageView starButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -84,7 +87,7 @@ public class  MainActivity extends AppCompatActivity {
 
         GachaEngine engine = new GachaEngine();
 
-        ImageView starButton = findViewById(R.id.starButton);
+        starButton = findViewById(R.id.starButton);
         View cardSpawnAnchor = findViewById(R.id.cardSpawnAnchor);
         MaterialCardView resultCard = findViewById(R.id.resultCard);
         ImageView cardBack = findViewById(R.id.cardBack);
@@ -110,7 +113,8 @@ public class  MainActivity extends AppCompatActivity {
                     return;
                 }
 
-                // Token spent. Update the displayed balance.
+                // Token spent. Update the displayed balance (and re-enable /
+                // disable the star button if we just hit zero).
                 refreshTokenDisplay();
 
                 // Run the gacha pull.
@@ -122,10 +126,14 @@ public class  MainActivity extends AppCompatActivity {
                         getPackageName()
                 );
 
-                // Persist the unlock to the inventory table. The gallery will
-                // pick it up the next time it queries the repository.
+                // Persist the unlock to the inventory table. The Repository
+                // returns a "New! ..." or "Duplicate: ..." message; surface
+                // it as a Toast so the player can tell new pulls from dupes.
                 repository.unlockItem(pulledItem.getId(), (ok, msg) -> {
                     Log.d("GachaPull", msg);
+                    if (ok) {
+                        Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show();
+                    }
                 });
 
                 // Button press animation
@@ -209,20 +217,38 @@ public class  MainActivity extends AppCompatActivity {
             }
         });
 
+        // Bottom action bar — Get Chances button (adds 10 tokens).
+        TextView getChancesButton = findViewById(R.id.getChancesButton);
+        getChancesButton.setOnClickListener(v -> {
+            repository.addTokens(10, (success, message) -> {
+                if (success) {
+                    refreshTokenDisplay();
+                    Toast.makeText(MainActivity.this, "+10 chances added!", Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show();
+                }
+            });
+        });
+
+        // Bottom action bar — Gallery button (shows the live inventory).
         TextView galleryButton = findViewById(R.id.galleryButton);
-//        TextView galleryButton = findViewById(R.id.galleryButton);
         galleryButton.setOnClickListener(v -> {
             // Pull the real inventory snapshot before showing the dialog.
             // Callback fires on the main thread (Repository guarantees this),
             // so all UI work below is safe.
             repository.getAllInventory(inventory -> {
 
-                // Convert Room entities to the GalleryAdapter's view model.
-                // imageResName is a string like "common_1"; resolve it to a
-                // drawable resource id at runtime.
+                // Convert Room entities to the GalleryAdapter's view model,
+                // and count unlocked entries for the progress header.
                 List<GalleryItem> itemList = new ArrayList<>();
+                int unlockedCount = 0;
+                int totalCount = 0;
                 if (inventory != null) {
+                    totalCount = inventory.size();
                     for (InventoryEntity entity : inventory) {
+                        if (entity.unlocked) {
+                            unlockedCount++;
+                        }
                         int imageResId = getResources().getIdentifier(
                                 entity.imageResName,
                                 "drawable",
@@ -240,6 +266,16 @@ public class  MainActivity extends AppCompatActivity {
                 // Build and display the dialog.
                 LayoutInflater inflater = LayoutInflater.from(MainActivity.this);
                 View dialogView = inflater.inflate(R.layout.dialog_gallery, null);
+
+                // Collection progress header. Null-checked so the build
+                // doesn't break if the XML doesn't have the TextView yet
+                // (e.g. teammate hasn't pulled the layout change).
+                TextView collectionProgressText =
+                        dialogView.findViewById(R.id.collectionProgressText);
+                if (collectionProgressText != null) {
+                    collectionProgressText.setText(
+                            "Collected: " + unlockedCount + " / " + totalCount);
+                }
 
                 RecyclerView dialogGalleryRecyclerView = dialogView.findViewById(R.id.dialogGalleryRecyclerView);
                 dialogGalleryRecyclerView.setLayoutManager(new GridLayoutManager(MainActivity.this, 3));
@@ -412,10 +448,27 @@ public class  MainActivity extends AppCompatActivity {
         // TODO Interface 7:
         // Load real draw history here.
     }
+
     private void refreshTokenDisplay() {
         repository.getUser(user -> {
             if (user != null) {
                 chanceCountText.setText(String.valueOf(user.tokenBalance));
+
+                boolean hasTokens = user.tokenBalance > 0;
+                starButton.setEnabled(hasTokens);
+
+                if (hasTokens) {
+                    // Restore full color
+                    starButton.clearColorFilter();
+                    starButton.setAlpha(1f);
+                } else {
+                    // Desaturate to grayscale — the colorful star becomes a
+                    // grey star, which reads clearly as "disabled".
+                    ColorMatrix matrix = new ColorMatrix();
+                    matrix.setSaturation(0);
+                    starButton.setColorFilter(new ColorMatrixColorFilter(matrix));
+                    starButton.setAlpha(0.6f);
+                }
             }
         });
     }

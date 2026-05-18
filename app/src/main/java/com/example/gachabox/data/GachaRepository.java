@@ -133,7 +133,11 @@ public class GachaRepository {
                 return;
             }
 
-            if (!item.unlocked) {
+            // Distinguish first-time unlock from a duplicate pull so the
+            // UI can show different feedback (e.g. "New!" toast vs
+            // "Duplicate (×N)" toast).
+            boolean wasNew = !item.unlocked;
+            if (wasNew) {
                 item.unlocked = true;
                 item.quantity = 1;
             } else {
@@ -141,10 +145,16 @@ public class GachaRepository {
             }
 
             inventoryDao.updateItem(item);
-            // Capture the name now so the lambda doesn't depend on the
-            // mutable entity field at dispatch time.
+
+            // Capture values now so the lambda doesn't depend on the
+            // mutable entity fields at dispatch time.
             String name = item.itemName;
-            mainHandler.post(() -> callback.onComplete(true, name + " added to inventory."));
+            int quantity = item.quantity;
+            String message = wasNew
+                    ? "New! " + name + " unlocked."
+                    : "Duplicate: " + name + " (×" + quantity + ")";
+
+            mainHandler.post(() -> callback.onComplete(true, message));
         });
     }
 
