@@ -84,10 +84,17 @@
         android:textColor="#8A7BA3"
         android:textSize="14sp" />
 
+    <!-- RecyclerView is wrap_content so the dialog grows to fit all 10 -->
+    <!-- rows of the current banner. With 3 columns and 10 items, that's -->
+    <!-- 4 rows (the last row holds the Secret card alone). No scrolling -->
+    <!-- needed — the dialog dynamically resizes per banner.             -->
+    <!-- nestedScrollingEnabled=false avoids any tug-of-war with potential -->
+    <!-- parent scroll containers.                                       -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/dialogGalleryRecyclerView"
         android:layout_width="match_parent"
-        android:layout_height="360dp"
+        android:layout_height="wrap_content"
+        android:nestedScrollingEnabled="false"
         android:overScrollMode="never"
         android:clipToPadding="false"
         android:paddingLeft="4dp"
