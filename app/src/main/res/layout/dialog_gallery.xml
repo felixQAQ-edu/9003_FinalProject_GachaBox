@@ -15,7 +15,64 @@
         android:textStyle="bold"
         android:textColor="#4F4A57"
         android:gravity="center"
-        android:layout_marginBottom="4dp" />
+        android:layout_marginBottom="12dp" />
+
+    <!-- ============ Phase 2: Banner tabs inside Gallery ============ -->
+    <!-- Same 3 tabs as the main screen; selecting one filters this  -->
+    <!-- dialog AND updates the main screen's active banner so the   -->
+    <!-- two stay in sync (single source of truth on currentBannerId)-->
+    <LinearLayout
+        android:id="@+id/galleryBannerTabs"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:layout_marginBottom="10dp"
+        android:background="@drawable/bottom_action_bg"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/galleryTabDogs"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="Doggos"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:textColor="#4F4A57" />
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="20dp"
+            android:layout_gravity="center_vertical"
+            android:background="#D8C8EA" />
+
+        <TextView
+            android:id="@+id/galleryTabAnime"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="Anime"
+            android:textSize="13sp"
+            android:textColor="#8A7BA3" />
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="20dp"
+            android:layout_gravity="center_vertical"
+            android:background="#D8C8EA" />
+
+        <TextView
+            android:id="@+id/galleryTabFood"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="Foodies"
+            android:textSize="13sp"
+            android:textColor="#8A7BA3" />
+    </LinearLayout>
 
     <TextView
         android:id="@+id/collectionProgressText"

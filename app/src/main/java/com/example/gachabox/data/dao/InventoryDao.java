@@ -23,6 +23,14 @@ public interface InventoryDao {
     @Query("SELECT * FROM inventory ORDER BY itemId ASC")
     List<InventoryEntity> getAllItems();
 
+    /**
+     * Items from one banner only, ordered by id so commons come first,
+     * then uncommons, etc. Phase 2 UI uses this to render per-banner
+     * galleries.
+     */
+    @Query("SELECT * FROM inventory WHERE bannerId = :bannerId ORDER BY itemId ASC")
+    List<InventoryEntity> getItemsByBanner(String bannerId);
+
     @Query("SELECT * FROM inventory WHERE unlocked = 1 ORDER BY itemId ASC")
     List<InventoryEntity> getUnlockedItems();
 

@@ -35,6 +35,9 @@ package com.example.gachabox;
 //    }
 //}
 
+import android.graphics.ColorMatrix;
+import android.graphics.ColorMatrixColorFilter;
+import android.graphics.Typeface;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -44,8 +47,6 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.graphics.ColorMatrix;
-import android.graphics.ColorMatrixColorFilter;
 
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AlertDialog;
@@ -56,16 +57,21 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.example.gachabox.model.Banner;
 import com.example.gachabox.model.GachaItem;
 import com.example.gachabox.data.GachaRepository;
 import com.example.gachabox.gallery.GalleryAdapter;
 import com.example.gachabox.gallery.GalleryItem;
 import com.example.gachabox.logic.GachaEngine;
 import com.google.android.material.card.MaterialCardView;
+import com.example.gachabox.data.entity.HistoryEntity;
 import com.example.gachabox.data.entity.InventoryEntity;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 public class  MainActivity extends AppCompatActivity {
 
@@ -75,6 +81,15 @@ public class  MainActivity extends AppCompatActivity {
     private GachaRepository repository;
     private TextView chanceCountText;
     private ImageView starButton;
+
+    // ----- Banner state (Phase 2) -----
+    // Currently-selected banner. Mutable now (Phase 1 had it as final);
+    // the three main-screen tabs flip this between DOGS / ANIME / FOOD,
+    // and every pull / gallery-fetch reads this value.
+    private String currentBannerId = Banner.DOGS.id;
+    private TextView tabBannerDogs;
+    private TextView tabBannerAnime;
+    private TextView tabBannerFood;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -93,6 +108,17 @@ public class  MainActivity extends AppCompatActivity {
         ImageView cardBack = findViewById(R.id.cardBack);
         ImageView cardFront = findViewById(R.id.cardFront);
         chanceCountText = findViewById(R.id.chanceCountText);
+
+        // ----- Banner tabs (main screen) -----
+        tabBannerDogs  = findViewById(R.id.tabBannerDogs);
+        tabBannerAnime = findViewById(R.id.tabBannerAnime);
+        tabBannerFood  = findViewById(R.id.tabBannerFood);
+        tabBannerDogs .setOnClickListener(v -> selectBanner(Banner.DOGS.id));
+        tabBannerAnime.setOnClickListener(v -> selectBanner(Banner.ANIME.id));
+        tabBannerFood .setOnClickListener(v -> selectBanner(Banner.FOOD.id));
+        // Make sure tab styling matches the initial banner.
+        selectBanner(currentBannerId);
+
         refreshTokenDisplay();
 
         starButton.setOnClickListener(v -> {
@@ -117,8 +143,8 @@ public class  MainActivity extends AppCompatActivity {
                 // disable the star button if we just hit zero).
                 refreshTokenDisplay();
 
-                // Run the gacha pull.
-                GachaItem pulledItem = engine.pull();
+                // Run the gacha pull from the currently-selected banner.
+                GachaItem pulledItem = engine.pull(currentBannerId);
                 String rarity = pulledItem.getRarity();
                 int cardImageResId = getResources().getIdentifier(
                         pulledItem.getImageResName(),
@@ -160,7 +186,8 @@ public class  MainActivity extends AppCompatActivity {
                         cardImageResId
                 );
 
-                // History stub still empty — closed in a later iteration.
+                // Append a row to the history table. Fire-and-forget — the
+                // dialog reads it lazily when the user opens the History tab.
                 saveDrawHistory(pulledItem);
                 updateCollection(pulledItem);
             });
@@ -195,15 +222,17 @@ public class  MainActivity extends AppCompatActivity {
 
             tabHistory.setOnClickListener(view -> {
                 dialogInfoContent.setVisibility(View.GONE);
-                historyHeaderRow.setVisibility(View.VISIBLE);
+                // Hide the column-header row — our formatted text doesn't
+                // align to it, and the timestamp + rarity are clear enough
+                // inline that the headers add noise.
+                historyHeaderRow.setVisibility(View.GONE);
                 historyEmptyText.setVisibility(View.VISIBLE);
+                historyEmptyText.setText("Loading...");
 
                 tabInfo.setTextColor(0xFF8A7BA3);
                 tabHistory.setTextColor(0xFF4F4A57);
 
-                // TODO Interface 7:
-                // Load real draw history here.
-                loadDrawHistory();
+                loadDrawHistory(historyEmptyText);
             });
 
             AlertDialog dialog = new AlertDialog.Builder(MainActivity.this)
@@ -230,16 +259,72 @@ public class  MainActivity extends AppCompatActivity {
             });
         });
 
-        // Bottom action bar — Gallery button (shows the live inventory).
+        // Bottom action bar — Gallery button (shows the current banner's inventory).
         TextView galleryButton = findViewById(R.id.galleryButton);
-        galleryButton.setOnClickListener(v -> {
-            // Pull the real inventory snapshot before showing the dialog.
-            // Callback fires on the main thread (Repository guarantees this),
-            // so all UI work below is safe.
-            repository.getAllInventory(inventory -> {
+        galleryButton.setOnClickListener(v -> openGalleryDialog());
 
-                // Convert Room entities to the GalleryAdapter's view model,
-                // and count unlocked entries for the progress header.
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
+            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
+            return insets;
+        });
+    }
+
+    /**
+     * Update the active banner. Refreshes the main-screen tab styling so
+     * the user sees which banner pulls will be drawn from. The next
+     * star-button press will use this banner via {@code engine.pull()}.
+     */
+    private void selectBanner(String bannerId) {
+        currentBannerId = bannerId;
+        styleTab(tabBannerDogs,  Banner.DOGS.id.equals(bannerId));
+        styleTab(tabBannerAnime, Banner.ANIME.id.equals(bannerId));
+        styleTab(tabBannerFood,  Banner.FOOD.id.equals(bannerId));
+    }
+
+    /**
+     * Apply selected / unselected text styling to a tab TextView.
+     * Selected = dark + bold; unselected = faded purple + normal.
+     * Matches the colour palette used by the existing info dialog tabs.
+     */
+    private void styleTab(TextView tab, boolean selected) {
+        if (tab == null) return;
+        if (selected) {
+            tab.setTextColor(0xFF4F4A57);
+            tab.setTypeface(null, Typeface.BOLD);
+        } else {
+            tab.setTextColor(0xFF8A7BA3);
+            tab.setTypeface(null, Typeface.NORMAL);
+        }
+    }
+
+    /**
+     * Build and show the Gallery dialog, which now contains its own
+     * banner-tab strip. Selecting a tab inside the dialog also flips the
+     * main screen's active banner, so pulling after closing the dialog
+     * uses whichever banner the user was last looking at.
+     */
+    private void openGalleryDialog() {
+        LayoutInflater inflater = LayoutInflater.from(MainActivity.this);
+        View dialogView = inflater.inflate(R.layout.dialog_gallery, null);
+
+        TextView galleryTabDogs  = dialogView.findViewById(R.id.galleryTabDogs);
+        TextView galleryTabAnime = dialogView.findViewById(R.id.galleryTabAnime);
+        TextView galleryTabFood  = dialogView.findViewById(R.id.galleryTabFood);
+        TextView collectionProgressText =
+                dialogView.findViewById(R.id.collectionProgressText);
+        RecyclerView recyclerView =
+                dialogView.findViewById(R.id.dialogGalleryRecyclerView);
+        recyclerView.setLayoutManager(new GridLayoutManager(MainActivity.this, 3));
+
+        // Repaint the dialog (tabs + progress + grid) for the current banner.
+        // Defined as a Runnable so tab clicks below can re-run it.
+        Runnable refresh = () -> {
+            styleTab(galleryTabDogs,  Banner.DOGS.id.equals(currentBannerId));
+            styleTab(galleryTabAnime, Banner.ANIME.id.equals(currentBannerId));
+            styleTab(galleryTabFood,  Banner.FOOD.id.equals(currentBannerId));
+
+            repository.getInventoryByBanner(currentBannerId, inventory -> {
                 List<GalleryItem> itemList = new ArrayList<>();
                 int unlockedCount = 0;
                 int totalCount = 0;
@@ -262,46 +347,34 @@ public class  MainActivity extends AppCompatActivity {
                         ));
                     }
                 }
-
-                // Build and display the dialog.
-                LayoutInflater inflater = LayoutInflater.from(MainActivity.this);
-                View dialogView = inflater.inflate(R.layout.dialog_gallery, null);
-
-                // Collection progress header. Null-checked so the build
-                // doesn't break if the XML doesn't have the TextView yet
-                // (e.g. teammate hasn't pulled the layout change).
-                TextView collectionProgressText =
-                        dialogView.findViewById(R.id.collectionProgressText);
                 if (collectionProgressText != null) {
                     collectionProgressText.setText(
                             "Collected: " + unlockedCount + " / " + totalCount);
                 }
-
-                RecyclerView dialogGalleryRecyclerView = dialogView.findViewById(R.id.dialogGalleryRecyclerView);
-                dialogGalleryRecyclerView.setLayoutManager(new GridLayoutManager(MainActivity.this, 3));
-
-                GalleryAdapter adapter = new GalleryAdapter(itemList);
-                dialogGalleryRecyclerView.setAdapter(adapter);
-
-                AlertDialog dialog = new AlertDialog.Builder(MainActivity.this)
-                        .setView(dialogView)
-                        .create();
-
-                dialog.show();
-
-                if (dialog.getWindow() != null) {
-                    dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
-                    int width = (int) (getResources().getDisplayMetrics().widthPixels * 0.9);
-                    dialog.getWindow().setLayout(width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
-                }
+                recyclerView.setAdapter(new GalleryAdapter(itemList));
             });
-        });
+        };
 
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
-            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
-            return insets;
-        });
+        // Each in-dialog tab updates currentBannerId (which also restyles
+        // the main screen tabs via selectBanner) then re-renders the dialog.
+        galleryTabDogs .setOnClickListener(v -> { selectBanner(Banner.DOGS.id);  refresh.run(); });
+        galleryTabAnime.setOnClickListener(v -> { selectBanner(Banner.ANIME.id); refresh.run(); });
+        galleryTabFood .setOnClickListener(v -> { selectBanner(Banner.FOOD.id);  refresh.run(); });
+
+        // Initial render — show whichever banner is currently active.
+        refresh.run();
+
+        AlertDialog dialog = new AlertDialog.Builder(MainActivity.this)
+                .setView(dialogView)
+                .create();
+
+        dialog.show();
+
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+            int width = (int) (getResources().getDisplayMetrics().widthPixels * 0.9);
+            dialog.getWindow().setLayout(width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
     }
 
     private void showDrawCard(MaterialCardView resultCard,
@@ -434,19 +507,71 @@ public class  MainActivity extends AppCompatActivity {
 
 
 
+    /**
+     * Append the just-pulled item to the persistent history log.
+     * Fire-and-forget — we don't gate the UI on this completing.
+     */
     private void saveDrawHistory(GachaItem pulledItem) {
-        // TODO Interface 5:
-        // Save draw history using the real persistence layer.
+        repository.recordHistory(pulledItem, (success, message) -> {
+            Log.d("GachaHistory", message);
+        });
     }
 
     private void updateCollection(GachaItem pulledItem) {
-        // TODO Interface 6:
-        // Update collection / gallery unlock state using real data.
+        // No-op. Unlock state is already persisted by repository.unlockItem
+        // in the pull flow; the gallery dialog reads the latest snapshot
+        // on demand via repository.getInventoryByBanner.
     }
 
-    private void loadDrawHistory() {
-        // TODO Interface 7:
-        // Load real draw history here.
+    /**
+     * Populate the Info dialog's History tab with the 50 most recent
+     * pulls. Format each line (monospace) as:
+     *   MMM dd HH:mm   Banner   Name              Rarity
+     *   May 19 13:33   Doggos   Common 1          Common
+     *   May 19 13:33   Anime    Hero 5            Uncommon
+     *   May 19 13:33   Foodies  Snack 10          Secret
+     * The banner column lets the user tell which pool each pull came
+     * from at a glance — important once anime / food banners are in use.
+     */
+    private void loadDrawHistory(TextView target) {
+        repository.getHistory(history -> {
+            if (history == null || history.isEmpty()) {
+                target.setTypeface(Typeface.DEFAULT);
+                target.setText("No pulls yet — try the gacha machine!");
+                return;
+            }
+
+            target.setTypeface(Typeface.MONOSPACE);
+
+            SimpleDateFormat fmt = new SimpleDateFormat("MMM dd HH:mm", Locale.US);
+            StringBuilder sb = new StringBuilder();
+            for (HistoryEntity h : history) {
+                String time = fmt.format(new Date(h.timestamp));
+                String banner = fitColumn(Banner.byId(h.bannerId).displayName, 7);
+                String name = fitColumn(h.itemName, 14);
+                sb.append(time)
+                  .append("  ")
+                  .append(banner)
+                  .append("  ")
+                  .append(name)
+                  .append("  ")
+                  .append(h.rarity)
+                  .append("\n");
+            }
+            target.setText(sb.toString().trim());
+        });
+    }
+
+    /**
+     * Pad with trailing spaces if shorter than width; truncate if longer.
+     * Used to keep monospace history rows aligned.
+     */
+    private static String fitColumn(String value, int width) {
+        if (value == null) value = "";
+        if (value.length() > width) {
+            return value.substring(0, width);
+        }
+        return String.format(Locale.US, "%-" + width + "s", value);
     }
 
     private void refreshTokenDisplay() {

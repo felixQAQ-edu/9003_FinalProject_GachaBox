@@ -15,6 +15,8 @@ package com.example.gachabox.model;
  *   <li>{@code rarity} — "Common" / "Uncommon" / "Rare" / "Secret".</li>
  *   <li>{@code imageResName} — drawable resource name (e.g. "common_1")
  *       used by MainActivity to display the card front.</li>
+ *   <li>{@code bannerId} — which banner this item belongs to (e.g. "dogs",
+ *       "anime", "food"). Use {@link Banner} constants to compare.</li>
  * </ul>
  */
 public class GachaItem {
@@ -23,12 +25,15 @@ public class GachaItem {
     private final String name;
     private final String rarity;
     private final String imageResName;
+    private final String bannerId;
 
-    public GachaItem(String id, String name, String rarity, String imageResName) {
+    public GachaItem(String id, String name, String rarity,
+                     String imageResName, String bannerId) {
         this.id = id;
         this.name = name;
         this.rarity = rarity;
         this.imageResName = imageResName;
+        this.bannerId = bannerId;
     }
 
     public String getId() {
@@ -47,8 +52,12 @@ public class GachaItem {
         return imageResName;
     }
 
+    public String getBannerId() {
+        return bannerId;
+    }
+
     @Override
     public String toString() {
-        return "[" + rarity + "] " + name;
+        return "[" + bannerId + "/" + rarity + "] " + name;
     }
 }
